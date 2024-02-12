@@ -1,0 +1,81 @@
+#lang racket
+(require racket/string)
+
+; Function to read a file and return its lines as a list
+(define (read-file-lines filename)
+  (with-input-from-file filename
+    (lambda ()
+      (let loop ([line (read-line)]
+                 [acc '()]
+                 [line-number 1])
+        (if (eof-object? line)
+            (reverse acc) ; Reverse to maintain the order of lines as in the file
+            (loop (read-line)
+                  (cons (cons line line-number) acc) ; Include line numbers
+                  (+ line-number 1)))))))
+
+; Determine if a line is a team name based on its position or content
+(define (is-team-name? line-number line-content)
+  (or (= line-number 1) (= line-number 16) ; First or sixteenth line
+      (<= (length (string-split line-content)) 1))) ; Or if the line has 1 or fewer elements
+
+; Function to read the file and extract team names from the 1st and 16th lines
+(define (read-and-print-team-names filename)
+  (with-input-from-file filename
+    (lambda ()
+      (let loop ([line (read-line)]
+                 [line-number 1])
+        (cond
+          ;; Check for the 1st line (Team 1)
+          [(= line-number 1)
+           (displayln (format "Team 1: ~a" (string-trim line))) ; Print Team 1 name
+           (loop (read-line) (+ line-number 1))]
+          ;; Check for the 16th line (Team 2)
+          [(= line-number 17)
+           (displayln (format "Team 2: ~a" (string-trim line)))] ; Print Team 2 name
+          ;; Stop after the 16th line to avoid reading the entire file
+          [(> line-number 17)]
+          ;; Continue looping through the file
+          [else (loop (read-line) (+ line-number 1))])))))
+
+; Main program execution
+
+
+; Convert score symbols to numbers, handling strikes, spares, and numeric scores
+(define (string->number-safe str last-score)
+  (cond
+    [(string=? str "X") 10] ; Strike
+    [(string=? str "/") (- 10 last-score)] ; Spare, based on last score
+    [(regexp-match? #rx"^[0-9]$" str) (string->number str)] ; Numeric score
+    [else 0])) ; Default to avoid contract violation
+
+; Calculate simple bowling scores from a list of score strings
+(define (calculate-simple-scores scores)
+  (let loop ([scores scores]
+             [total 0]
+             [last-score 0])
+    (if (null? scores)
+        total
+        (let* ([score (car scores)]
+               [numeric-score (string->number-safe score last-score)])
+          (loop (cdr scores) (+ total numeric-score) numeric-score)))))
+
+; Process lines, aggregate scores by player, excluding team names
+(define (process-and-calculate-scores lines)
+  (define scores-by-player (make-hash))
+  (for ([line-data (in-list lines)])
+    (match-define (cons line line-number) line-data)
+    (unless (is-team-name? line-number line)
+      (let* ([parts (string-split line)]
+             [name (string-join (take parts 2) " ")]
+             [scores (drop parts 2)]
+             [total-score (calculate-simple-scores scores)])
+        (hash-update! scores-by-player name (curry + total-score) 0)))) ; Aggregate scores
+  (for ([(name total-score) (in-hash scores-by-player)])
+    (displayln (format "~a: Total Score: ~a" name total-score))))
+
+; Main program execution
+(define lines (read-file-lines "scores.txt")) ; Read lines from the file, including line numbers
+(process-and-calculate-scores lines) ; Calculate and print total scores, excluding team names
+
+(read-and-print-team-names "scores.txt")
